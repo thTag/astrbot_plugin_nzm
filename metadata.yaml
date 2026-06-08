@@ -1,6 +1,6 @@
-name: nzm
+name: astrbot_plugin_nzm
 display_name: 哪煮米域名比价
-author: thTag
+author: 叹号大帝
 desc: 接入哪煮米 API（nazhumi.com）实现域名注册与续费比价查询。
 short_desc: 域名注册与续费比价插件。
 version: 1.1.7
