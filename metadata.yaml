@@ -3,8 +3,8 @@ display_name: 哪煮米域名比价
 author: thTag
 desc: 接入哪煮米 API（nazhumi.com）实现域名注册与续费比价查询。
 short_desc: 域名注册与续费比价插件。
-version: 1.1.6
-repo_url: https://github.com/thTag/astrbot_plugin_nzm
+version: 1.1.7
+repo: https://github.com/thTag/astrbot_plugin_nzm
 astrbot_version: ">=3.4.0"
 support_platforms:
   - aiocqhttp
