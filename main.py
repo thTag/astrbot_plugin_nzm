@@ -8,7 +8,7 @@ from astrbot.api.all import *
 
 logger = logging.getLogger("astrbot")
 
-@register("nzm", "thTag", "哪煮米域名比价插件", "1.1.7", "https://github.com/thTag/astrbot_plugin_nzm")
+@register("nzm", "叹号大帝", "哪煮米域名比价插件", "1.1.8", "https://github.com/thTag/astrbot_plugin_nzm")
 class NazhumiPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
