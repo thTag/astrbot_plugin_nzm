@@ -1,5 +1,6 @@
 import aiohttp
 import logging
+import json
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api.message_components import *
@@ -7,7 +8,7 @@ from astrbot.api.all import *
 
 logger = logging.getLogger("astrbot")
 
-@register("nzm", "thTag", "哪煮米域名比价插件", "1.1.3", "https://github.com/thTag/astrbot_plugin_nzm")
+@register("nzm", "thTag", "哪煮米域名比价插件", "1.1.4", "https://github.com/thTag/astrbot_plugin_nzm")
 class NazhumiPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -39,74 +40,59 @@ class NazhumiPlugin(Star):
         order = self.config.get('default_order', 'new')
         params = {"domain": domain.strip('.'), "order": order}
         
-        logger.info(f"[NZM] 正在请求 API: {self.api_base} params={params}")
+        logger.info(f"[NZM] 请求 API: {params}")
 
         async with aiohttp.ClientSession(headers=self.headers) as session:
             try:
                 async with session.get(self.api_base, params=params) as resp:
                     if resp.status != 200:
-                        yield event.plain_result(f"❌ 哪煮米接口异常 (状态码: {resp.status})")
+                        yield event.plain_result(f"❌ 接口异常: {resp.status}")
                         return
-                        
-                    data = await resp.json()
                     
-                    # 兼容处理：如果返回的是字典
-                    if isinstance(data, dict):
-                        logger.info(f"[NZM] 收到字典数据，键名为: {list(data.keys())}")
-                        # 逻辑：如果文档里提到的 registrarname 在顶层，说明直接返回了数据对象
-                        if "registrarname" in data:
-                            data = [data]
-                        # 或者尝试寻找嵌套的列表（有些 API 会包一层）
-                        else:
-                            for k in ["data", "results", "list"]:
-                                if isinstance(data.get(k), list):
-                                    data = data[k]
-                                    break
+                    text = await resp.text()
+                    logger.debug(f"[NZM] 原始响应内容: {text[:200]}")
+                    
+                    try:
+                        raw_data = json.loads(text)
+                    except:
+                        yield event.plain_result("❌ 接口返回了非 JSON 格式。")
+                        return
 
-                    if not data or not isinstance(data, list):
-                        yield event.plain_result(f"🔍 哪煮米未返回 .{domain} 的有效比价列表。")
+                    # 核心解析逻辑
+                    final_list = []
+                    if isinstance(raw_data, list):
+                        final_list = raw_data
+                    elif isinstance(raw_data, dict):
+                        # 如果是 {"code": 200, "data": [...]}
+                        inner_data = raw_data.get("data")
+                        if isinstance(inner_data, list):
+                            final_list = inner_data
+                        elif isinstance(inner_data, dict):
+                            final_list = [inner_data]
+                        elif "registrarname" in raw_data:
+                            final_list = [raw_data]
+
+                    if not final_list:
+                        yield event.plain_result(f"🔍 未找到 .{domain} 的有效比价结果。")
                         return
                     
-                    msg = f"📊 .{domain} 比价结果 (按{self._translate_order(order)}排序):\n"
-                    for item in data:
-                        price = f"{item['currency']} {item['new']}" if item.get('new') != 'n/a' else "N/A"
-                        renew = f"{item['currency']} {item['renew']}" if item.get('renew') != 'n/a' else "N/A"
-                        msg += f"• {item['registrarname']}: 注册 {price} / 续费 {renew}\n"
+                    msg = f"📊 .{domain} 比价结果 ({self._translate_order(order)}):\n"
+                    for item in final_list[:10]: # 最多展示10条
+                        reg_name = item.get('registrarname', '未知服务商')
+                        cur = item.get('currency', '￥')
+                        new_p = item.get('new', 'n/a')
+                        ren_p = item.get('renew', 'n/a')
+                        
+                        price_str = f"{cur}{new_p}" if str(new_p).lower() != 'n/a' else "N/A"
+                        renew_str = f"{cur}{ren_p}" if str(ren_p).lower() != 'n/a' else "N/A"
+                        msg += f"• {reg_name}: {price_str} (续费 {renew_str})\n"
                     
                     msg += "\n数据来源: nazhumi.com"
                     yield event.plain_result(msg)
             except Exception as e:
-                logger.error(f"[NZM] 插件运行出错", exc_info=True)
-                yield event.plain_result(f"⚠️ 查询出错: {str(e)}")
-
-    @filter.command("nzm_reg")
-    async def query_by_registrar(self, event: AstrMessageEvent, reg: str):
-        '''查注册商最便宜后缀。用法: /nzm_reg aliyun'''
-        if not reg:
-            yield event.plain_result("💡 请输入注册商代码，如: /nzm_reg aliyun")
-            return
-
-        order = self.config.get('default_order', 'new')
-        params = {"registrar": reg, "order": order}
-        
-        async with aiohttp.ClientSession(headers=self.headers) as session:
-            try:
-                async with session.get(self.api_base, params=params) as resp:
-                    data = await resp.json()
-                    if isinstance(data, dict) and "registrarname" in data:
-                        data = [data] # 同上兼容逻辑
-                    
-                    if not data or not isinstance(data, list):
-                        yield event.plain_result(f"❌ 未找到注册商 {reg} 的数据。")
-                        return
-                    
-                    msg = f"🏢 {data[0]['registrarname']} 最便宜后缀 (按{self._translate_order(order)}排序):\n"
-                    for item in data:
-                        msg += f"• .{item['domain']}: 注册 {item['currency']} {item['new']}\n"
-                    yield event.plain_result(msg)
-            except Exception as e:
-                yield event.plain_result(f"⚠️ 查询出错: {str(e)}")
+                logger.error("[NZM] 插件运行报错", exc_info=True)
+                yield event.plain_result(f"⚠️ 报错了: {str(e)}")
 
     def _translate_order(self, order):
-        mapping = {"new": "注册价格", "renew": "续费价格", "transfer": "转入价格"}
+        mapping = {"new": "注册", "renew": "续费", "transfer": "转入"}
         return mapping.get(order, "价格")
