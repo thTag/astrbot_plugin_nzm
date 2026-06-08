@@ -5,10 +5,9 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api.message_components import *
 from astrbot.api.all import *
 
-# 获取插件专属日志实例
 logger = logging.getLogger("astrbot")
 
-@register("nzm", "thTag", "哪煮米域名比价插件", "1.1.2", "https://github.com/thTag/astrbot_plugin_nzm")
+@register("nzm", "thTag", "哪煮米域名比价插件", "1.1.3", "https://github.com/thTag/astrbot_plugin_nzm")
 class NazhumiPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -45,17 +44,27 @@ class NazhumiPlugin(Star):
         async with aiohttp.ClientSession(headers=self.headers) as session:
             try:
                 async with session.get(self.api_base, params=params) as resp:
-                    logger.info(f"[NZM] API 响应状态码: {resp.status}")
-                    
                     if resp.status != 200:
                         yield event.plain_result(f"❌ 哪煮米接口异常 (状态码: {resp.status})")
                         return
                         
                     data = await resp.json()
-                    logger.info(f"[NZM] API 原始数据类型: {type(data)}")
+                    
+                    # 兼容处理：如果返回的是字典
+                    if isinstance(data, dict):
+                        logger.info(f"[NZM] 收到字典数据，键名为: {list(data.keys())}")
+                        # 逻辑：如果文档里提到的 registrarname 在顶层，说明直接返回了数据对象
+                        if "registrarname" in data:
+                            data = [data]
+                        # 或者尝试寻找嵌套的列表（有些 API 会包一层）
+                        else:
+                            for k in ["data", "results", "list"]:
+                                if isinstance(data.get(k), list):
+                                    data = data[k]
+                                    break
 
                     if not data or not isinstance(data, list):
-                        yield event.plain_result(f"🔍 哪煮米未返回 .{domain} 的比价信息。")
+                        yield event.plain_result(f"🔍 哪煮米未返回 .{domain} 的有效比价列表。")
                         return
                     
                     msg = f"📊 .{domain} 比价结果 (按{self._translate_order(order)}排序):\n"
@@ -67,7 +76,7 @@ class NazhumiPlugin(Star):
                     msg += "\n数据来源: nazhumi.com"
                     yield event.plain_result(msg)
             except Exception as e:
-                logger.error(f"[NZM] 插件运行出错: {str(e)}", exc_info=True)
+                logger.error(f"[NZM] 插件运行出错", exc_info=True)
                 yield event.plain_result(f"⚠️ 查询出错: {str(e)}")
 
     @filter.command("nzm_reg")
@@ -80,15 +89,13 @@ class NazhumiPlugin(Star):
         order = self.config.get('default_order', 'new')
         params = {"registrar": reg, "order": order}
         
-        logger.info(f"[NZM] 正在按注册商请求 API: {reg}")
-
         async with aiohttp.ClientSession(headers=self.headers) as session:
             try:
                 async with session.get(self.api_base, params=params) as resp:
-                    if resp.status != 200:
-                        yield event.plain_result(f"❌ 哪煮米接口异常 (状态码: {resp.status})")
-                        return
                     data = await resp.json()
+                    if isinstance(data, dict) and "registrarname" in data:
+                        data = [data] # 同上兼容逻辑
+                    
                     if not data or not isinstance(data, list):
                         yield event.plain_result(f"❌ 未找到注册商 {reg} 的数据。")
                         return
@@ -98,7 +105,6 @@ class NazhumiPlugin(Star):
                         msg += f"• .{item['domain']}: 注册 {item['currency']} {item['new']}\n"
                     yield event.plain_result(msg)
             except Exception as e:
-                logger.error(f"[NZM] 插件运行出错: {str(e)}", exc_info=True)
                 yield event.plain_result(f"⚠️ 查询出错: {str(e)}")
 
     def _translate_order(self, order):
