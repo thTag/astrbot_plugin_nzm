@@ -8,7 +8,7 @@ from astrbot.api.all import *
 
 logger = logging.getLogger("astrbot")
 
-@register("nzm", "thTag", "哪煮米域名比价插件", "1.1.5", "https://github.com/thTag/astrbot_plugin_nzm")
+@register("nzm", "thTag", "哪煮米域名比价插件", "1.1.6", "https://github.com/thTag/astrbot_plugin_nzm")
 class NazhumiPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -56,12 +56,10 @@ class NazhumiPlugin(Star):
                         yield event.plain_result("❌ 接口返回了非 JSON 格式。")
                         return
 
-                    # 根据你 curl 的数据结构提取列表
                     final_list = []
                     if isinstance(raw_data, dict):
                         inner_data = raw_data.get("data", {})
                         if isinstance(inner_data, dict):
-                            # 数据实际存放在 data.price 里
                             final_list = inner_data.get("price", [])
                         elif isinstance(inner_data, list):
                             final_list = inner_data
@@ -73,9 +71,9 @@ class NazhumiPlugin(Star):
                         return
                     
                     msg = f"📊 .{domain} 比价结果 ({self._translate_order(order)}):\n"
-                    for item in final_list[:10]: # 最多展示10条
+                    for item in final_list[:10]:
                         reg_name = item.get('registrarname', '未知服务商')
-                        cur = item.get('currency', 'usd').upper()
+                        cur = item.get('currency', 'USD').upper()
                         new_p = item.get('new', 'n/a')
                         ren_p = item.get('renew', 'n/a')
                         
@@ -111,7 +109,6 @@ class NazhumiPlugin(Star):
                     if isinstance(data, dict):
                         inner_data = data.get("data", {})
                         if isinstance(inner_data, dict):
-                            # 获取最便宜后缀列表的 key 也是 price 
                             final_list = inner_data.get("price", [])
                         elif isinstance(inner_data, list):
                             final_list = inner_data
@@ -122,11 +119,10 @@ class NazhumiPlugin(Star):
                         yield event.plain_result(f"❌ 未找到注册商 {reg} 的数据。")
                         return
                     
-                    # 尝试从第一条数据获取注册商名称，若无则使用原始代码
                     reg_show_name = final_list[0].get('registrarname', reg.upper())
                     msg = f"🏢 {reg_show_name} 最便宜后缀 ({self._translate_order(order)}):\n"
                     for item in final_list:
-                        cur = item.get('currency', 'usd').upper()
+                        cur = item.get('currency', 'USD').upper()
                         price = f"{cur} {item.get('new', 'n/a')}"
                         msg += f"• .{item.get('domain')}: 注册 {price}\n"
                     yield event.plain_result(msg)
