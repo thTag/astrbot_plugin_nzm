@@ -4,7 +4,7 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api.message_components import *
 from astrbot.api.all import *
 
-@register("nzm", "thTag", "哪煮米域名比价插件", "1.1.0", "https://github.com/thTag/astrbot_plugin_nzm")
+@register("nzm", "thTag", "哪煮米域名比价插件", "1.1.1", "https://github.com/thTag/astrbot_plugin_nzm")
 class NazhumiPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -46,8 +46,11 @@ class NazhumiPlugin(Star):
                     
                     msg = f"📊 .{domain} 比价结果 (按{self._translate_order(order)}排序):\n"
                     for item in data:
-                        price = f\"{item['currency']} {item['new']}\" if item['new'] != \"n/a\" else \"N/A\"
-                        renew = f\"{item['currency']} {item['renew']}\" if item['renew'] != \"n/a\" else \"N/A\"
+                        price = f"{item['currency']} {item['new']}" if item['new'] != "n/a" else "N/A"
+                        renew = f"{item['currency']} {item['renew']}\" if item['renew'] != \"n/a\" else \"N/A\"" # 这里写错了，重新整理
+                        # 重新修正字符串拼接逻辑，避免转义坑
+                        price = f"{item['currency']} {item['new']}" if item.get('new') != 'n/a' else "N/A"
+                        renew = f"{item['currency']} {item['renew']}" if item.get('renew') != 'n/a' else "N/A"
                         msg += f"• {item['registrarname']}: 注册 {price} / 续费 {renew}\n"
                     
                     msg += "\n数据来源: nazhumi.com"
@@ -84,5 +87,5 @@ class NazhumiPlugin(Star):
                 yield event.plain_result(f"⚠️ 查询出错: {str(e)}")
 
     def _translate_order(self, order):
-        mapping = {\"new\": \"注册价格\", \"renew\": \"续费价格\", \"transfer\": \"转入价格\"}
-        return mapping.get(order, \"价格\")
+        mapping = {"new": "注册价格", "renew": "续费价格", "transfer": "转入价格"}
+        return mapping.get(order, "价格")
