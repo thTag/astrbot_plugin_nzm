@@ -1,15 +1,22 @@
 import aiohttp
+import logging
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api.message_components import *
 from astrbot.api.all import *
 
-@register("nzm", "thTag", "哪煮米域名比价插件", "1.1.1", "https://github.com/thTag/astrbot_plugin_nzm")
+# 获取插件专属日志实例
+logger = logging.getLogger("astrbot")
+
+@register("nzm", "thTag", "哪煮米域名比价插件", "1.1.2", "https://github.com/thTag/astrbot_plugin_nzm")
 class NazhumiPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.config = context.get_config()
         self.api_base = "https://www.nazhumi.com/api/v1"
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
 
     metadata = {
         "config_schema": {
@@ -33,22 +40,26 @@ class NazhumiPlugin(Star):
         order = self.config.get('default_order', 'new')
         params = {"domain": domain.strip('.'), "order": order}
         
-        async with aiohttp.ClientSession() as session:
+        logger.info(f"[NZM] 正在请求 API: {self.api_base} params={params}")
+
+        async with aiohttp.ClientSession(headers=self.headers) as session:
             try:
                 async with session.get(self.api_base, params=params) as resp:
+                    logger.info(f"[NZM] API 响应状态码: {resp.status}")
+                    
                     if resp.status != 200:
-                        yield event.plain_result("❌ 哪煮米接口暂时不可用。")
+                        yield event.plain_result(f"❌ 哪煮米接口异常 (状态码: {resp.status})")
                         return
+                        
                     data = await resp.json()
+                    logger.info(f"[NZM] API 原始数据类型: {type(data)}")
+
                     if not data or not isinstance(data, list):
-                        yield event.plain_result(f"🔍 未找到 .{domain} 的相关数据。")
+                        yield event.plain_result(f"🔍 哪煮米未返回 .{domain} 的比价信息。")
                         return
                     
                     msg = f"📊 .{domain} 比价结果 (按{self._translate_order(order)}排序):\n"
                     for item in data:
-                        price = f"{item['currency']} {item['new']}" if item['new'] != "n/a" else "N/A"
-                        renew = f"{item['currency']} {item['renew']}\" if item['renew'] != \"n/a\" else \"N/A\"" # 这里写错了，重新整理
-                        # 重新修正字符串拼接逻辑，避免转义坑
                         price = f"{item['currency']} {item['new']}" if item.get('new') != 'n/a' else "N/A"
                         renew = f"{item['currency']} {item['renew']}" if item.get('renew') != 'n/a' else "N/A"
                         msg += f"• {item['registrarname']}: 注册 {price} / 续费 {renew}\n"
@@ -56,6 +67,7 @@ class NazhumiPlugin(Star):
                     msg += "\n数据来源: nazhumi.com"
                     yield event.plain_result(msg)
             except Exception as e:
+                logger.error(f"[NZM] 插件运行出错: {str(e)}", exc_info=True)
                 yield event.plain_result(f"⚠️ 查询出错: {str(e)}")
 
     @filter.command("nzm_reg")
@@ -68,11 +80,13 @@ class NazhumiPlugin(Star):
         order = self.config.get('default_order', 'new')
         params = {"registrar": reg, "order": order}
         
-        async with aiohttp.ClientSession() as session:
+        logger.info(f"[NZM] 正在按注册商请求 API: {reg}")
+
+        async with aiohttp.ClientSession(headers=self.headers) as session:
             try:
                 async with session.get(self.api_base, params=params) as resp:
                     if resp.status != 200:
-                        yield event.plain_result("❌ 哪煮米接口暂时不可用。")
+                        yield event.plain_result(f"❌ 哪煮米接口异常 (状态码: {resp.status})")
                         return
                     data = await resp.json()
                     if not data or not isinstance(data, list):
@@ -84,6 +98,7 @@ class NazhumiPlugin(Star):
                         msg += f"• .{item['domain']}: 注册 {item['currency']} {item['new']}\n"
                     yield event.plain_result(msg)
             except Exception as e:
+                logger.error(f"[NZM] 插件运行出错: {str(e)}", exc_info=True)
                 yield event.plain_result(f"⚠️ 查询出错: {str(e)}")
 
     def _translate_order(self, order):
